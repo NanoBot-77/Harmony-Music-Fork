@@ -1,0 +1,71 @@
+name: Build iOS App (No Code Sign)
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  build-ios:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        run: |
+          sudo xcode-select -switch /Applications/Xcode.app
+          xcodebuild -version
+
+      - name: Install CocoaPods dependencies (if any)
+        run: |
+          if [ -f "Podfile" ]; then
+            sudo gem install cocoapods
+            pod install --repo-update
+          fi
+
+      - name: Clean previous builds
+        run: |
+          xcodebuild clean \
+            -project "Harmony Music.xcodeproj" \
+            -scheme "Harmony Music" \
+            -configuration Release
+
+      - name: Build unsigned IPA
+        run: |
+          mkdir -p build/ipa
+          xcodebuild \
+            -project "Harmony Music.xcodeproj" \
+            -scheme "Harmony Music" \
+            -configuration Release \
+            -sdk iphoneos \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            archive -archivePath build/HarmonyMusic.xcarchive
+
+          # Export unsigned IPA
+          xcodebuild -exportArchive \
+            -archivePath build/HarmonyMusic.xcarchive \
+            -exportOptionsPlist <(cat <<EOF
+            {
+              "method": "ad-hoc",
+              "signingStyle": "manual",
+              "compileBitcode": false,
+              "provisioningProfiles": {},
+              "teamID": "",
+              "uploadBitcode": false,
+              "uploadSymbols": false
+            }
+          EOF
+          ) \
+            -exportPath build/ipa
+
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Harmony-Music-iOS
+          path: build/ipa/*.ipa
